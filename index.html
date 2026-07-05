@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>البحث عن كواشف الحريق</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="flame">🔥</div>
+  <div class="titles">
+    <h1 id="siteTitle">مستشفى</h1>
+    <div class="sub" id="siteSub">قسم السلامة</div>
+  </div>
+  <div class="mode-tag">بحث الموظفين</div>
+</div>
+
+<div class="wrap">
+
+  <div class="panel search-hero">
+    <h2>وين موقع الكاشف؟</h2>
+    <p>اكتب رقم/كود الكاشف أو اسم الموقع (مثال: الردهة، غرفة 204، المطبخ)</p>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="ابحث هنا...">
+      <button class="btn btn-ember" id="searchBtn">بحث</button>
+    </div>
+    <div class="floor-chips" id="floorChips"></div>
+    <div class="results" id="resultsBox"></div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong id="currentFloorLabel">اختر دورًا لعرض المخطط</strong>
+      <span class="badge" id="detectorCount"></span>
+    </div>
+    <div class="map-stage" id="mapStage"></div>
+  </div>
+
+  <div class="footer-note">قسم السلامة — للاطّلاع فقط. أي تعديل يتم عبر رابط المسؤول.</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script>
+document.getElementById('siteTitle').textContent = `${SITE_INFO.title} — ${SITE_INFO.city}`;
+document.getElementById('siteSub').textContent = SITE_INFO.department;
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let floors = {};       // floorId -> {name, image, order}
+let detectors = {};    // detectorId -> {floorId, code, location, notes, x, y}
+let activeFloorId = null;
+let highlightedId = null;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+db.ref('floors').on('value', snap=>{
+  floors = snap.val() || {};
+  if(!activeFloorId){
+    const ids = Object.keys(floors).sort((a,b)=>(floors[a].order||0)-(floors[b].order||0));
+    if(ids.length) activeFloorId = ids[0];
+  }
+  renderFloorChips();
+  renderMap();
+});
+
+db.ref('detectors').on('value', snap=>{
+  detectors = snap.val() || {};
+  renderMap();
+});
+
+function renderFloorChips(){
+  const box = document.getElementById('floorChips');
+  const ids = Object.keys(floors).sort((a,b)=>(floors[a].order||0)-(floors[b].order||0));
+  if(!ids.length){
+    box.innerHTML = '<span class="hint">لم تتم إضافة أي مخطط بعد من قِبل المسؤول.</span>';
+    return;
+  }
+  box.innerHTML = ids.map(id=>`
+    <div class="chip ${id===activeFloorId?'active':''}" data-id="${id}">${floors[id].name}</div>
+  `).join('');
+  box.querySelectorAll('.chip').forEach(el=>{
+    el.onclick = ()=>{ activeFloorId = el.dataset.id; highlightedId=null; renderFloorChips(); renderMap(); };
+  });
+}
+
+function renderMap(){
+  const stage = document.getElementById('mapStage');
+  const label = document.getElementById('currentFloorLabel');
+  const countEl = document.getElementById('detectorCount');
+  stage.innerHTML = '';
+  if(!activeFloorId || !floors[activeFloorId]){
+    label.textContent = 'لا يوجد مخطط بعد';
+    countEl.textContent = '';
+    return;
+  }
+  const floor = floors[activeFloorId];
+  label.textContent = floor.name;
+  const list = Object.entries(detectors).filter(([id,d])=>d.floorId===activeFloorId);
+  countEl.textContent = `${list.length} كاشف`;
+
+  const img = document.createElement('img');
+  img.src = floor.image;
+  stage.appendChild(img);
+
+  list.forEach(([id,d])=>{
+    const pin = document.createElement('div');
+    pin.className = 'pin' + (id===highlightedId ? ' found':'');
+    pin.style.left = d.x+'%';
+    pin.style.top = d.y+'%';
+    pin.title = `${d.code} — ${d.location||''}`;
+    pin.innerHTML = pinSVG(id===highlightedId);
+    pin.onclick = ()=> highlight(id, false);
+    stage.appendChild(pin);
+
+    if(id===highlightedId){
+      const ring = document.createElement('div');
+      ring.className = 'pin-ring';
+      ring.style.left = d.x+'%';
+      ring.style.top = d.y+'%';
+      stage.appendChild(ring);
+
+      const lab = document.createElement('div');
+      lab.className = 'pin-label';
+      lab.style.left = d.x+'%';
+      lab.style.top = d.y+'%';
+      lab.textContent = d.code;
+      stage.appendChild(lab);
+    }
+  });
+}
+
+function pinSVG(active){
+  const color = active ? '#E8501E' : '#173B52';
+  return `<svg viewBox="0 0 24 24" fill="${color}"><path d="M12 2C7.6 2 4 5.6 4 10c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z"/></svg>`;
+}
+
+function highlight(id, scrollTo){
+  const d = detectors[id];
+  if(!d) return;
+  activeFloorId = d.floorId;
+  highlightedId = id;
+  renderFloorChips();
+  renderMap();
+  if(scrollTo){
+    document.getElementById('mapStage').scrollIntoView({behavior:'smooth', block:'center'});
+  }
+}
+
+function doSearch(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const box = document.getElementById('resultsBox');
+  if(!q){ box.innerHTML=''; return; }
+  const matches = Object.entries(detectors).filter(([id,d])=>
+    (d.code||'').toLowerCase().includes(q) || (d.location||'').toLowerCase().includes(q)
+  );
+  if(!matches.length){
+    box.innerHTML = '<div class="empty-note">ما فيه نتائج مطابقة، جرّب كلمة ثانية.</div>';
+    return;
+  }
+  box.innerHTML = matches.map(([id,d])=>`
+    <div class="result-item" data-id="${id}">
+      <div>
+        <div class="code mono">${d.code}</div>
+        <div class="loc">${d.location||''} — ${floors[d.floorId]?.name||''}</div>
+      </div>
+      <span>📍</span>
+    </div>
+  `).join('');
+  box.querySelectorAll('.result-item').forEach(el=>{
+    el.onclick = ()=> highlight(el.dataset.id, true);
+  });
+}
+
+document.getElementById('searchBtn').onclick = doSearch;
+document.getElementById('searchInput').addEventListener('keyup', e=>{
+  if(e.key==='Enter') doSearch();
+  else doSearch();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>إدارة كواشف الحريق</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="flame">🔥</div>
+  <div class="titles">
+    <h1 id="siteTitle">مستشفى</h1>
+    <div class="sub" id="siteSub">قسم السلامة</div>
+  </div>
+  <div class="mode-tag">وضع التعديل — للمسؤول فقط</div>
+</div>
+
+<div class="wrap">
+
+  <!-- Lock screen -->
+  <div class="panel lock-screen" id="lockScreen">
+    <div class="flame-big">🔒</div>
+    <h2 style="margin:0 0 6px;">دخول المسؤول</h2>
+    <p style="color:var(--ink-muted);font-size:13.5px;margin:0 0 16px;">أدخل رمز الدخول (PIN) لبدء التعديل</p>
+    <input type="password" id="pinInput" placeholder="رمز الدخول" style="text-align:center;font-size:18px;letter-spacing:3px;">
+    <button class="btn btn-ember" style="width:100%;margin-top:12px;" id="pinBtn">دخول</button>
+    <div class="hint" id="pinError" style="color:#C23030;"></div>
+  </div>
+
+  <!-- Admin app -->
+  <div id="adminApp" style="display:none;">
+
+    <div class="panel">
+      <div class="grid2">
+        <div>
+          <strong>الأدوار / المخططات</strong>
+          <div class="side-list" id="floorList" style="margin-top:10px;"></div>
+
+          <label style="margin-top:16px;">إضافة دور جديد</label>
+          <input type="text" id="newFloorName" placeholder="مثال: الدور الثاني — الجناح الشرقي">
+          <label>صورة الكروكي</label>
+          <input type="file" id="newFloorImage" accept="image/*">
+          <button class="btn btn-safe btn-sm" style="width:100%;margin-top:10px;" id="addFloorBtn">إضافة الدور</button>
+          <div class="hint">تقدر ترفع صورة سكان أو تصوير للمخطط (PNG/JPG).</div>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <strong id="activeFloorTitle">اختر دورًا من القائمة</strong>
+            <div>
+              <button class="btn btn-outline btn-sm" id="renameFloorBtn">إعادة تسمية</button>
+              <button class="btn btn-danger btn-sm" id="deleteFloorBtn">حذف الدور</button>
+            </div>
+          </div>
+          <div class="hint" id="placeHint">اضغط زر "إضافة كاشف" ثم اضغط على مكان الكاشف في المخطط.</div>
+          <button class="btn btn-ember btn-sm" id="placeModeBtn" style="margin-top:8px;">➕ إضافة كاشف</button>
+          <div class="map-stage" id="mapStage" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <strong>كواشف الدور الحالي</strong>
+      <div id="detectorList" style="margin-top:10px;"></div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">قسم السلامة — رابط الإدارة. لا تشارك هذا الرابط أو رمز الدخول مع غير المسؤولين.</div>
+</div>
+
+<!-- Add/Edit detector modal -->
+<div id="modalOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,42,61,.45);z-index:200;align-items:center;justify-content:center;">
+  <div class="panel" style="width:90%;max-width:380px;">
+    <strong id="modalTitle">بيانات الكاشف</strong>
+    <label>كود / رقم الكاشف</label>
+    <input type="text" id="fCode" placeholder="مثال: FD-204">
+    <label>وصف الموقع</label>
+    <input type="text" id="fLocation" placeholder="مثال: ممر غرفة 204">
+    <label>ملاحظات (اختياري)</label>
+    <textarea id="fNotes" placeholder="أي تفاصيل إضافية"></textarea>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-ember" style="flex:1;" id="saveDetectorBtn">حفظ</button>
+      <button class="btn btn-outline" style="flex:1;" id="cancelDetectorBtn">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script>
+document.getElementById('siteTitle').textContent = `${SITE_INFO.title} — ${SITE_INFO.city}`;
+document.getElementById('siteSub').textContent = SITE_INFO.department;
+
+// ---------- PIN lock ----------
+if(sessionStorage.getItem('kashif_admin_ok')==='1'){
+  document.getElementById('lockScreen').style.display='none';
+  document.getElementById('adminApp').style.display='block';
+}
+document.getElementById('pinBtn').onclick = checkPin;
+document.getElementById('pinInput').addEventListener('keyup', e=>{ if(e.key==='Enter') checkPin(); });
+function checkPin(){
+  const val = document.getElementById('pinInput').value;
+  if(val === ADMIN_PIN){
+    sessionStorage.setItem('kashif_admin_ok','1');
+    document.getElementById('lockScreen').style.display='none';
+    document.getElementById('adminApp').style.display='block';
+  } else {
+    document.getElementById('pinError').textContent = 'رمز الدخول غير صحيح';
+  }
+}
+
+// ---------- Firebase ----------
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let floors = {};
+let detectors = {};
+let activeFloorId = null;
+let placeMode = false;
+let editingDetectorId = null;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+db.ref('floors').on('value', snap=>{
+  floors = snap.val() || {};
+  if(!activeFloorId){
+    const ids = Object.keys(floors).sort((a,b)=>(floors[a].order||0)-(floors[b].order||0));
+    if(ids.length) activeFloorId = ids[0];
+  }
+  renderFloorList();
+  renderMap();
+});
+
+db.ref('detectors').on('value', snap=>{
+  detectors = snap.val() || {};
+  renderMap();
+  renderDetectorList();
+});
+
+function renderFloorList(){
+  const box = document.getElementById('floorList');
+  const ids = Object.keys(floors).sort((a,b)=>(floors[a].order||0)-(floors[b].order||0));
+  if(!ids.length){
+    box.innerHTML = '<div class="hint">ما فيه أدوار بعد، أضف أول دور بالأسفل.</div>';
+    document.getElementById('activeFloorTitle').textContent = 'لا يوجد دور محدد';
+    return;
+  }
+  box.innerHTML = ids.map(id=>{
+    const count = Object.values(detectors).filter(d=>d.floorId===id).length;
+    return `<div class="side-item ${id===activeFloorId?'active':''}" data-id="${id}">
+      <span>${floors[id].name}<small>${count} كاشف</small></span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.side-item').forEach(el=>{
+    el.onclick = ()=>{ activeFloorId = el.dataset.id; renderFloorList(); renderMap(); renderDetectorList(); };
+  });
+  if(activeFloorId && floors[activeFloorId]){
+    document.getElementById('activeFloorTitle').textContent = floors[activeFloorId].name;
+  }
+}
+
+// ---------- Add floor ----------
+document.getElementById('addFloorBtn').onclick = ()=>{
+  const name = document.getElementById('newFloorName').value.trim();
+  const fileInput = document.getElementById('newFloorImage');
+  const file = fileInput.files[0];
+  if(!name || !file){ toast('أدخل اسم الدور واختر صورة'); return; }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const newRef = db.ref('floors').push();
+    newRef.set({
+      name,
+      image: reader.result,
+      order: Date.now()
+    }).then(()=>{
+      activeFloorId = newRef.key;
+      document.getElementById('newFloorName').value='';
+      fileInput.value='';
+      toast('تمت إضافة الدور');
+    });
+  };
+  reader.readAsDataURL(file);
+};
+
+document.getElementById('renameFloorBtn').onclick = ()=>{
+  if(!activeFloorId) return;
+  const name = prompt('الاسم الجديد للدور:', floors[activeFloorId]?.name || '');
+  if(name && name.trim()){
+    db.ref('floors/'+activeFloorId+'/name').set(name.trim());
+  }
+};
+
+document.getElementById('deleteFloorBtn').onclick = ()=>{
+  if(!activeFloorId) return;
+  if(!confirm('حذف هذا الدور سيحذف كل الكواشف المرتبطة فيه أيضًا. متأكد؟')) return;
+  const toDelete = Object.entries(detectors).filter(([id,d])=>d.floorId===activeFloorId).map(([id])=>id);
+  const updates = {};
+  updates['floors/'+activeFloorId] = null;
+  toDelete.forEach(id=> updates['detectors/'+id] = null );
+  db.ref().update(updates).then(()=>{
+    activeFloorId = null;
+    toast('تم حذف الدور');
+  });
+};
+
+// ---------- Map + placing detectors ----------
+document.getElementById('placeModeBtn').onclick = ()=>{
+  if(!activeFloorId){ toast('اختر دورًا أولًا'); return; }
+  placeMode = !placeMode;
+  document.getElementById('placeModeBtn').textContent = placeMode ? '✖ إلغاء الإضافة' : '➕ إضافة كاشف';
+  document.getElementById('placeHint').textContent = placeMode
+    ? 'اضغط الآن على مكان الكاشف في المخطط أدناه'
+    : 'اضغط زر "إضافة كاشف" ثم اضغط على مكان الكاشف في المخطط.';
+  document.getElementById('mapStage').parentElement.classList.toggle('crosshair-mode', placeMode);
+};
+
+function renderMap(){
+  const stage = document.getElementById('mapStage');
+  stage.innerHTML = '';
+  if(!activeFloorId || !floors[activeFloorId]){
+    stage.style.minHeight='200px';
+    return;
+  }
+  const floor = floors[activeFloorId];
+  const img = document.createElement('img');
+  img.src = floor.image;
+  stage.appendChild(img);
+
+  stage.onclick = (e)=>{
+    if(!placeMode) return;
+    const rect = stage.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    openDetectorModal(null, {x, y});
+  };
+
+  Object.entries(detectors).filter(([id,d])=>d.floorId===activeFloorId).forEach(([id,d])=>{
+    const pin = document.createElement('div');
+    pin.className = 'pin';
+    pin.style.left = d.x+'%';
+    pin.style.top = d.y+'%';
+    pin.title = `${d.code} — ${d.location||''} (اضغط للتعديل)`;
+    pin.innerHTML = `<svg viewBox="0 0 24 24" fill="#173B52"><path d="M12 2C7.6 2 4 5.6 4 10c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z"/></svg>`;
+    pin.onclick = (e)=>{ e.stopPropagation(); openDetectorModal(id); };
+    stage.appendChild(pin);
+  });
+}
+
+function renderDetectorList(){
+  const box = document.getElementById('detectorList');
+  if(!activeFloorId){ box.innerHTML = '<div class="hint">اختر دورًا لعرض كواشفه.</div>'; return; }
+  const list = Object.entries(detectors).filter(([id,d])=>d.floorId===activeFloorId);
+  if(!list.length){ box.innerHTML = '<div class="hint">ما فيه كواشف مضافة لهذا الدور بعد.</div>'; return; }
+  box.innerHTML = list.map(([id,d])=>`
+    <div class="detector-row">
+      <span><span class="mono" style="font-weight:700;">${d.code}</span> — ${d.location||''}</span>
+      <span>
+        <button class="btn btn-outline btn-sm" data-edit="${id}">تعديل</button>
+        <button class="btn btn-danger btn-sm" data-del="${id}">حذف</button>
+      </span>
+    </div>
+  `).join('');
+  box.querySelectorAll('[data-edit]').forEach(el=> el.onclick = ()=> openDetectorModal(el.dataset.edit) );
+  box.querySelectorAll('[data-del]').forEach(el=> el.onclick = ()=> deleteDetector(el.dataset.del) );
+}
+
+function deleteDetector(id){
+  if(!confirm('حذف هذا الكاشف؟')) return;
+  db.ref('detectors/'+id).remove().then(()=> toast('تم الحذف'));
+}
+
+// ---------- Detector modal ----------
+let pendingCoords = null;
+function openDetectorModal(id, coords){
+  editingDetectorId = id;
+  pendingCoords = coords || null;
+  const overlay = document.getElementById('modalOverlay');
+  const title = document.getElementById('modalTitle');
+  if(id){
+    const d = detectors[id];
+    title.textContent = 'تعديل بيانات الكاشف';
+    document.getElementById('fCode').value = d.code || '';
+    document.getElementById('fLocation').value = d.location || '';
+    document.getElementById('fNotes').value = d.notes || '';
+  } else {
+    title.textContent = 'إضافة كاشف جديد';
+    document.getElementById('fCode').value = '';
+    document.getElementById('fLocation').value = '';
+    document.getElementById('fNotes').value = '';
+  }
+  overlay.style.display = 'flex';
+}
+document.getElementById('cancelDetectorBtn').onclick = ()=>{
+  document.getElementById('modalOverlay').style.display='none';
+  placeMode = false;
+  document.getElementById('placeModeBtn').textContent = '➕ إضافة كاشف';
+  document.getElementById('mapStage').parentElement.classList.remove('crosshair-mode');
+};
+document.getElementById('saveDetectorBtn').onclick = ()=>{
+  const code = document.getElementById('fCode').value.trim();
+  const location = document.getElementById('fLocation').value.trim();
+  const notes = document.getElementById('fNotes').value.trim();
+  if(!code){ toast('اكتب كود الكاشف'); return; }
+
+  if(editingDetectorId){
+    db.ref('detectors/'+editingDetectorId).update({code, location, notes}).then(()=>{
+      toast('تم تحديث الكاشف');
+    });
+  } else {
+    const newRef = db.ref('detectors').push();
+    newRef.set({
+      floorId: activeFloorId,
+      code, location, notes,
+      x: pendingCoords.x, y: pendingCoords.y
+    }).then(()=> toast('تمت إضافة الكاشف'));
+  }
+  document.getElementById('modalOverlay').style.display='none';
+  placeMode = false;
+  document.getElementById('placeModeBtn').textContent = '➕ إضافة كاشف';
+  document.getElementById('mapStage').parentElement.classList.remove('crosshair-mode');
+};
+</script>
+</body>
+</html>
