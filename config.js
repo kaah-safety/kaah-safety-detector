@@ -1,4 +1,5 @@
 const firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyCyzyV_GaEKEzxbTI10eQTFEj3kOX8IgwU",
   authDomain: "kaah-safety-detector-a3f1c.firebaseapp.com",
   databaseURL: "https://kaah-safety-detector-a3f1c-default-rtdb.asia-southeast1.firebasedatabase.app",
