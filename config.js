@@ -16,4 +16,3 @@ const SITE_INFO = {
   city: "مكة المكرمة",
   department: "قسم السلامة"
 };
-
