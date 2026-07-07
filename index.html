@@ -65,6 +65,7 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
+// Listen to floors in real-time
 db.ref('floors').on('value', snap=>{
   floors = snap.val() || {};
   if(!activeFloorId){
@@ -75,6 +76,7 @@ db.ref('floors').on('value', snap=>{
   renderMap();
 });
 
+// Listen to detectors in real-time
 db.ref('detectors').on('value', snap=>{
   detectors = snap.val() || {};
   renderMap();
