@@ -114,31 +114,36 @@ function renderMap(){
   img.src = floor.image;
   stage.appendChild(img);
 
-  list.forEach(([id,d])=>{
-    const pin = document.createElement('div');
-    pin.className = 'pin' + (id===highlightedId ? ' found':'');
-    pin.style.left = d.x+'%';
-    pin.style.top = d.y+'%';
-    pin.title = `${d.code} — ${d.location||''}`;
-    pin.innerHTML = pinSVG(id===highlightedId);
-    pin.onclick = ()=> highlight(id, false);
-    stage.appendChild(pin);
-
-    if(id===highlightedId){
+  // Only render the searched/highlighted detector — all others stay hidden
+  if(highlightedId){
+    const d = detectors[highlightedId];
+    if(d && d.floorId===activeFloorId){
       const ring = document.createElement('div');
       ring.className = 'pin-ring';
       ring.style.left = d.x+'%';
       ring.style.top = d.y+'%';
       stage.appendChild(ring);
 
-      const lab = document.createElement('div');
-      lab.className = 'pin-label';
-      lab.style.left = d.x+'%';
-      lab.style.top = d.y+'%';
-      lab.textContent = d.code;
-      stage.appendChild(lab);
+      const pin = document.createElement('div');
+      pin.className = 'pin found';
+      pin.style.left = d.x+'%';
+      pin.style.top = d.y+'%';
+      pin.title = `${d.code} — ${d.location||''}`;
+      pin.innerHTML = pinSVG(true);
+      stage.appendChild(pin);
+
+      const info = document.createElement('div');
+      info.className = 'pin-info';
+      info.style.left = d.x+'%';
+      info.style.top = d.y+'%';
+      info.innerHTML = `
+        <div class="pi-code">${d.code}</div>
+        ${d.location ? `<div class="pi-loc">${d.location}</div>` : ''}
+        ${d.notes ? `<div class="pi-notes">${d.notes}</div>` : ''}
+      `;
+      stage.appendChild(info);
     }
-  });
+  }
 }
 
 function pinSVG(active){

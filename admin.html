@@ -56,6 +56,10 @@
           </div>
           <div class="hint" id="placeHint">اضغط زر "إضافة كاشف" ثم اضغط على مكان الكاشف في المخطط.</div>
           <button class="btn btn-ember btn-sm" id="placeModeBtn" style="margin-top:8px;">➕ إضافة كاشف</button>
+          <div class="confirm-banner" id="confirmBanner">
+            <span>📍 هذا مكان الكاشف؟ اضغط بمكان ثاني لو تبي تعدّل</span>
+            <button class="btn btn-safe btn-sm" id="confirmPlaceBtn">✓ تأكيد الموقع</button>
+          </div>
           <div class="map-stage" id="mapStage" style="margin-top:12px;"></div>
         </div>
       </div>
@@ -124,6 +128,7 @@ let detectors = {};
 let activeFloorId = null;
 let placeMode = false;
 let editingDetectorId = null;
+let tempCoords = null;
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -218,11 +223,20 @@ document.getElementById('deleteFloorBtn').onclick = ()=>{
 document.getElementById('placeModeBtn').onclick = ()=>{
   if(!activeFloorId){ toast('اختر دورًا أولًا'); return; }
   placeMode = !placeMode;
+  tempCoords = null;
+  document.getElementById('confirmBanner').classList.remove('show');
   document.getElementById('placeModeBtn').textContent = placeMode ? '✖ إلغاء الإضافة' : '➕ إضافة كاشف';
   document.getElementById('placeHint').textContent = placeMode
-    ? 'اضغط الآن على مكان الكاشف في المخطط أدناه'
+    ? 'اضغط على مكان الكاشف في المخطط أدناه'
     : 'اضغط زر "إضافة كاشف" ثم اضغط على مكان الكاشف في المخطط.';
   document.getElementById('mapStage').parentElement.classList.toggle('crosshair-mode', placeMode);
+  renderMap();
+};
+
+document.getElementById('confirmPlaceBtn').onclick = ()=>{
+  if(!tempCoords) return;
+  openDetectorModal(null, tempCoords);
+  document.getElementById('confirmBanner').classList.remove('show');
 };
 
 function renderMap(){
@@ -242,7 +256,9 @@ function renderMap(){
     const rect = stage.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    openDetectorModal(null, {x, y});
+    tempCoords = {x, y};
+    document.getElementById('confirmBanner').classList.add('show');
+    renderMap();
   };
 
   Object.entries(detectors).filter(([id,d])=>d.floorId===activeFloorId).forEach(([id,d])=>{
@@ -255,6 +271,16 @@ function renderMap(){
     pin.onclick = (e)=>{ e.stopPropagation(); openDetectorModal(id); };
     stage.appendChild(pin);
   });
+
+  if(placeMode && tempCoords){
+    const tpin = document.createElement('div');
+    tpin.className = 'pin temp';
+    tpin.style.left = tempCoords.x+'%';
+    tpin.style.top = tempCoords.y+'%';
+    tpin.title = 'الموقع المؤقت — اضغط مكان ثاني للتعديل';
+    tpin.innerHTML = `<svg viewBox="0 0 24 24" fill="#F0A500"><path d="M12 2C7.6 2 4 5.6 4 10c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z"/></svg>`;
+    stage.appendChild(tpin);
+  }
 }
 
 function renderDetectorList(){
@@ -304,8 +330,12 @@ function openDetectorModal(id, coords){
 document.getElementById('cancelDetectorBtn').onclick = ()=>{
   document.getElementById('modalOverlay').style.display='none';
   placeMode = false;
+  tempCoords = null;
+  document.getElementById('confirmBanner').classList.remove('show');
   document.getElementById('placeModeBtn').textContent = '➕ إضافة كاشف';
+  document.getElementById('placeHint').textContent = 'اضغط زر "إضافة كاشف" ثم اضغط على مكان الكاشف في المخطط.';
   document.getElementById('mapStage').parentElement.classList.remove('crosshair-mode');
+  renderMap();
 };
 document.getElementById('saveDetectorBtn').onclick = ()=>{
   const code = document.getElementById('fCode').value.trim();
@@ -327,8 +357,12 @@ document.getElementById('saveDetectorBtn').onclick = ()=>{
   }
   document.getElementById('modalOverlay').style.display='none';
   placeMode = false;
+  tempCoords = null;
+  document.getElementById('confirmBanner').classList.remove('show');
   document.getElementById('placeModeBtn').textContent = '➕ إضافة كاشف';
+  document.getElementById('placeHint').textContent = 'اضغط زر "إضافة كاشف" ثم اضغط على مكان الكاشف في المخطط.';
   document.getElementById('mapStage').parentElement.classList.remove('crosshair-mode');
+  renderMap();
 };
 </script>
 </body>
