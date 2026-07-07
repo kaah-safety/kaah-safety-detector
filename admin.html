@@ -19,18 +19,8 @@
 
 <div class="wrap">
 
-  <!-- Lock screen -->
-  <div class="panel lock-screen" id="lockScreen">
-    <div class="flame-big">🔒</div>
-    <h2 style="margin:0 0 6px;">دخول المسؤول</h2>
-    <p style="color:var(--ink-muted);font-size:13.5px;margin:0 0 16px;">أدخل رمز الدخول (PIN) لبدء التعديل</p>
-    <input type="password" id="pinInput" placeholder="رمز الدخول" style="text-align:center;font-size:18px;letter-spacing:3px;">
-    <button class="btn btn-ember" style="width:100%;margin-top:12px;" id="pinBtn">دخول</button>
-    <div class="hint" id="pinError" style="color:#C23030;"></div>
-  </div>
-
   <!-- Admin app -->
-  <div id="adminApp" style="display:none;">
+  <div id="adminApp">
 
     <div class="panel">
       <div class="grid2">
@@ -72,7 +62,7 @@
 
   </div>
 
-  <div class="footer-note">قسم السلامة — رابط الإدارة. لا تشارك هذا الرابط أو رمز الدخول مع غير المسؤولين.</div>
+  <div class="footer-note">قسم السلامة — رابط الإدارة. لا تشارك هذا الرابط مع غير المسؤولين.</div>
 </div>
 
 <!-- Add/Edit detector modal -->
@@ -100,24 +90,6 @@
 <script>
 document.getElementById('siteTitle').textContent = `${SITE_INFO.title} — ${SITE_INFO.city}`;
 document.getElementById('siteSub').textContent = SITE_INFO.department;
-
-// ---------- PIN lock ----------
-if(sessionStorage.getItem('kashif_admin_ok')==='1'){
-  document.getElementById('lockScreen').style.display='none';
-  document.getElementById('adminApp').style.display='block';
-}
-document.getElementById('pinBtn').onclick = checkPin;
-document.getElementById('pinInput').addEventListener('keyup', e=>{ if(e.key==='Enter') checkPin(); });
-function checkPin(){
-  const val = document.getElementById('pinInput').value;
-  if(val === ADMIN_PIN){
-    sessionStorage.setItem('kashif_admin_ok','1');
-    document.getElementById('lockScreen').style.display='none';
-    document.getElementById('adminApp').style.display='block';
-  } else {
-    document.getElementById('pinError').textContent = 'رمز الدخول غير صحيح';
-  }
-}
 
 // ---------- Firebase ----------
 firebase.initializeApp(firebaseConfig);
